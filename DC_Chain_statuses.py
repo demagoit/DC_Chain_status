@@ -45,9 +45,13 @@ def read_in_file(in_file: str, in_SheetName: str='', header_row: int=0):
         wb.close()
 
     except FileNotFoundError:
-        input(f'File {in_file} not found. Press any key to exit.')
+        input(f'\nFile {in_file} not found. Press any key to exit.')
         sys.exit(1)
     
+    except Exception as e:
+        print('\n', e)
+        input('Press any key to exit.')
+        sys.exit(1)
 
     column_names = rename_columns(df.iloc[header_row].values)
     df.columns = column_names
