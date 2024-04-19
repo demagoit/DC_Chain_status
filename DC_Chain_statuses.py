@@ -4,19 +4,24 @@ from os.path import exists as file_exists
 from openpyxl import load_workbook
 import sys
 
-in_file = "Materialmasterdata.xlsx"
-status_sheet = "Report"
-active_products = "ZP02"
-pl_plant_sheet = "PL_Plant"
-# stat_definitions = 'Stat_definitions'
-stat_cross_ref = 'Stat_cross_ref'
+in_file = {
+    'name': 'Materialmasterdata.xlsx',
+    'status_sheet': 'Report',
+    'active_products': 'ZP02',
+    'pl_plant_sheet': 'PL_Plant',
+    'autoreplacement': 'Autoreplacement',
+    # 'stat_definitions': 'Stat_definitions',
+    'stat_cross_ref': 'Stat_cross_ref'
+}
 
-out_file = "Status_verification.xlsx"
-print(f'From {in_file} take:\n',
-      f'statuses - from {status_sheet}\n',
-      f'active products - from {active_products}\n',
-      f'statuses corelation - from {stat_cross_ref}\n',
-      f'delivering plant for PL - from {pl_plant_sheet}')
+out_file = {'name': 'Status_verification.xlsx'}
+            
+print(f'From {in_file["name"]} take:\n',
+      f'statuses - from {in_file["status_sheet"]}\n',
+      f'active products - from {in_file["active_products"]}\n',
+      f'statuses corelation - from {in_file["stat_cross_ref"]}\n',
+      f'autoreplacement schema - from {in_file["autoreplacement"]}\n',
+      f'delivering plant for PL - from {in_file["pl_plant_sheet"]}')
 
 
 def read_in_file(in_file: str, in_SheetName: str='', header_row: int=0):
@@ -71,64 +76,75 @@ def rename_columns(column_names):
     return column_names
 
 
-df_statuses, sheets = read_in_file(in_file, status_sheet, header_row=0)
-df_products, _ = read_in_file(in_file, active_products, header_row=0)
-df_pl_plant, _ = read_in_file(in_file, pl_plant_sheet, header_row=0)
-df_stats_ref, _ = read_in_file(in_file, stat_cross_ref, header_row=0)
-# print(sheets)
+df_statuses, sheets = read_in_file(
+    in_file['name'], in_file['status_sheet'], header_row=0)
+df_products, _ = read_in_file(
+    in_file['name'], in_file['active_products'], header_row=0)
+df_pl_plant, _ = read_in_file(
+    in_file['name'], in_file['pl_plant_sheet'], header_row=0)
+df_auroreplacement, _ = read_in_file(
+    in_file['name'], in_file['autoreplacement'], header_row=0)
+df_stats_ref, _ = read_in_file(
+    in_file['name'], in_file['stat_cross_ref'], header_row=0)
 
-df_statuses = df_statuses[['Material', 'Plant',
-                           'Product_line', 'X-distr.chain_status', 'DChain_Status']]
-# print(df_statuses)
 
-df_products = df_products[['Material_Number',
-                           'Text_Material', 'Amount_(Currency)']]
+def df_preparation_pipeline():
+    global df_statuses
+    global df_products
+    global df_pl_plant
+    global df_auroreplacement
+    global df_stats_ref
 
-# if several prices with different validity dates exists - take first record
-df_products.drop_duplicates(
-    subset='Material_Number', keep='first', inplace=True)
-df_products.set_index('Material_Number', inplace=True)
-# print(df_products)
+    df_statuses = df_statuses[['Material', 'Plant', 'Product_line', 
+                            'X-distr.chain_status', 'Plant-Sp.Matl_Status', 'DChain_Status']]
 
+    df_products = df_products[['Material_Number',
+                            'Text_Material', 'Amount_(Currency)']]
+    # if several prices with different validity dates exists - take first record
+    df_products.drop_duplicates(
+        subset='Material_Number', keep='first', inplace=True)
+    df_products.set_index('Material_Number', inplace=True)
+
+    df_pl_plant.set_index(df_pl_plant.columns[0], inplace=True)
+    df_pl_plant.dropna(how='all', inplace=True)
+    df_pl_plant['Plant_accepted'] = df_pl_plant.transpose().apply(
+        lambda x: x.dropna().index.to_list())
+    df_pl_plant = df_pl_plant[['Plant_accepted']]
+
+    df_auroreplacement = df_auroreplacement[[
+        'Material_Entered', 'Danf_Material_number']]
+
+    df_stats_ref.set_index(df_stats_ref.columns[0], inplace=True)
+    df_stats_ref['B600_accepted'] = df_stats_ref.transpose().apply(
+        lambda x: x.dropna().index.to_list())
+    df_stats_ref = df_stats_ref[['B600_accepted']]
+
+df_preparation_pipeline()
+
+# def df_merge_pipeline():
 df_statuses = df_statuses.join(
     df_products, on='Material', how='outer').reset_index(drop=True)
-
-# print(df_statuses)
-
-df_stats_ref.set_index(df_stats_ref.columns[0], inplace=True)
-
-df_stats_ref['B600_accepted'] = df_stats_ref.transpose().apply(
-    lambda x: x.dropna().index.to_list())
-df_stats_ref = df_stats_ref[['B600_accepted']]
-# print(df_stats_ref)
-
-df_statuses[['X-distr.chain_status', 'DChain_Status']
-            ] = df_statuses[['X-distr.chain_status', 'DChain_Status']].replace(np.nan, 0)
+df_statuses[['X-distr.chain_status', 'Plant-Sp.Matl_Status',  'DChain_Status']
+            ] = df_statuses[['X-distr.chain_status', 'Plant-Sp.Matl_Status', 'DChain_Status']].replace(np.nan, 0)
 df_statuses = df_statuses.astype(
-    {'X-distr.chain_status': 'int64', 'DChain_Status': 'int64'})
+    {'X-distr.chain_status': 'int64', 'Plant-Sp.Matl_Status': 'int64', 'DChain_Status': 'int64'})
+
 df_statuses = df_statuses.join(
     df_stats_ref, on='X-distr.chain_status', how='left')
-
 df_statuses['B600_accepted'] = df_statuses['B600_accepted'].apply(
     lambda x: x if isinstance(x, list) else [])
-# print(df_statuses)
-
-df_pl_plant.set_index(df_pl_plant.columns[0], inplace=True)
-df_pl_plant.dropna(how='all', inplace=True)
-df_pl_plant['Plant_accepted'] = df_pl_plant.transpose().apply(
-    lambda x: x.dropna().index.to_list())
-df_pl_plant = df_pl_plant[['Plant_accepted']]
-# print(df_pl_plant)
-
 
 df_statuses = df_statuses.join(df_pl_plant, on='Product_line', how='left')
 df_statuses['Plant_accepted'] = df_statuses['Plant_accepted'].apply(
     lambda x: x if isinstance(x, list) else [])
 
-# print(df_statuses)
+# print(df_statuses.head())
+# sys.exit(1)
 
+# local statuses are the same? (recomended to be the same)
+df_statuses['Is_local_stat_equal'] = df_statuses['Plant-Sp.Matl_Status'] == df_statuses['DChain_Status']
 
-# statuses are the same?
+# DChain statuses are the same?
 df_statuses['Is_X-DC_equal'] = df_statuses['X-distr.chain_status'] == df_statuses['DChain_Status']
 
 # is current DC_status within accepted for B600 variants?
@@ -137,7 +153,7 @@ df_statuses['Is_Status_accepted'] = df_statuses[['DChain_Status', 'B600_accepted
 
 # is current DC_status 'blocked' if no price?
 df_statuses['Is_Status_accepted'] = df_statuses[['Is_Status_accepted', 'DChain_Status', 'Amount_(Currency)']].apply(
-    lambda row: row.iloc[0] if row.iloc[2] else row.iloc[1] in [57, 78], axis=1)
+    lambda row: row.iloc[0] if row.iloc[2] else row.iloc[1] in [75, 78], axis=1)
 
 # is current Plant within accepted for B600 variants?
 df_statuses['Is_Plant_correct'] = df_statuses[[
@@ -162,12 +178,14 @@ df_plant_wrong = df_plant_wrong[~df_plant_wrong['Amount_(Currency)'].isna()]
 df_output = pd.concat([df_plant_wrong, df_plant_ok])
 # print(df_output)
 
-if file_exists(out_file):
-    print(f'Replacing {out_file}\n')
-else:
-    print(f'Creating {out_file}\n')
+df_output = df_output[df_output[['Amount_(Currency)', 'B600_accepted', 'Plant_accepted']].any(axis=1)]
 
-with pd.ExcelWriter(out_file, mode='w') as writer:
+if file_exists(out_file['name']):
+    print(f'Replacing {out_file["name"]}\n')
+else:
+    print(f'Creating {out_file["name"]}\n')
+
+with pd.ExcelWriter(out_file["name"], mode='w') as writer:
     df_output.to_excel(writer, sheet_name='Total', index=False)
 
 input('Done. Press any key to exit...')
