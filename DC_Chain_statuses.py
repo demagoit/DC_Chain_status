@@ -193,14 +193,22 @@ def autoreplacement_evaluation():
         df_statuses, on='Danf_Material_number', how='left', rsuffix='_New')
     
     # # order of steps matters as overwrite expected!!!
-    # df_auroreplacement['ToDo'] = None
-    # df_auroreplacement['ToDo'] = df_auroreplacement[['DChain_Status', 'DChain_Status_New', 'ToDo']].apply(
-    #     lambda x: 'OK' if x[1] == 51 else x[2])
-    # df_auroreplacement['ToDo'] = df_auroreplacement['DChain_Status_New'].apply(lambda x: 'review new code status' if x != 51 else x)
-    # df_auroreplacement['ToDo'] = df_auroreplacement['DChain_Status_New'].apply(lambda x: 'review replacement' if x in [57, 75, 78] else x)
-    # df_auroreplacement['ToDo'] = df_auroreplacement['DChain_Status'].apply(lambda x: 'cancel autoreplacement' if x in [57, 78] else x)
+    df_auroreplacement['ToDo'] = None
+
+    df_auroreplacement['ToDo'] = df_auroreplacement[['DChain_Status', 'DChain_Status_New', 'ToDo']].apply(
+        lambda x: 'cancel replacement' if (np.isnan(x['DChain_Status']) or np.isnan(x['DChain_Status_New'])) else x['ToDo'], axis='columns')
+
+    df_auroreplacement['ToDo'] = df_auroreplacement[['DChain_Status', 'DChain_Status_New', 'ToDo']].apply(
+        lambda x: 'review old product status' if (x['DChain_Status'] in [57, 78] and x['ToDo'] is None) else x['ToDo'], axis='columns')
+
+    df_auroreplacement['ToDo'] = df_auroreplacement[['DChain_Status', 'DChain_Status_New', 'ToDo']].apply(
+        lambda x: 'review replacement' if (x['DChain_Status_New'] in [57, 75, 78] and x['ToDo'] is None) else x['ToDo'], axis='columns')
+    
+    df_auroreplacement['ToDo'] = df_auroreplacement[['DChain_Status', 'DChain_Status_New', 'ToDo']].apply(
+        lambda x: 'OK' if (x['DChain_Status_New'] == 51 and x['ToDo'] is None) else x['ToDo'], axis='columns')
+    
     # # print(df_auroreplacement.head())
-    # # sys.exit(1)
+    # sys.exit(1)
 
 df_preparation_pipeline()
 df_merge_pipeline()
